@@ -12,8 +12,8 @@ DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/downloa
 # ─────────────────────────────────────────────
 # PALETA Y ESTILOS
 # ─────────────────────────────────────────────
-AZUL_OSCURO  = "#0f2942"
-AZUL_MEDIO   = "#1a5276"
+AZUL_OSCURO  = "#009fe3"
+AZUL_MEDIO   = "#fcdb00"
 AZUL_CLARO   = "#2e86c1"
 ACENTO       = "#1abc9c"
 GRIS_FONDO   = "#f0f4f8"
