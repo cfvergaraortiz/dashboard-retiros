@@ -11,28 +11,20 @@ import re
 # ─────────────────────────────────────────────
 # CONFIGURACIÓN — pega aquí tu link de OneDrive
 # ─────────────────────────────────────────────
-ONEDRIVE_SHARE_URL = "https://1drv.ms/u/c/0da2ba1c949328fa/IQDMIYZ2FvFKRK9wfOwiXBHJAX3Aty5GRYNiXYfxdVSqi98?e=rMBOmv"
+ONEDRIVE_SHARE_URL = "https://1drv.ms/u/c/0da2ba1c949328fa/IQDMIYZ2FvFKRK9wfOwiXBHJAX3Aty5GRYNiXYfxdVSqi98?e=fWnEcM"
 # Ejemplo: "https://1drv.ms/u/s!Abc123..."
 
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
 
-def onedrive_direct_url(share_url: str) -> str:
-    """Convierte un link compartido de OneDrive en URL de descarga directa."""
-    import base64
-    b64 = base64.b64encode(share_url.encode()).decode()
-    b64 = b64.rstrip("=").replace("/", "_").replace("+", "-")
-    return f"https://api.onedrive.com/v1.0/shares/u!{b64}/root/content"
-
-
 @st.cache_data(show_spinner="Cargando datos desde OneDrive…", ttl=3600)
 def load_data(url: str) -> pd.DataFrame:
-    direct = onedrive_direct_url(url)
-    resp = requests.get(direct, timeout=120)
+    # url debe ser el link de DESCARGA DIRECTA de OneDrive
+    # (clic derecho en botón Descargar → copiar dirección del enlace)
+    resp = requests.get(url, timeout=120)
     resp.raise_for_status()
     df = pd.read_parquet(io.BytesIO(resp.content))
-    # normalizar nombres
     df.columns = [c.strip() for c in df.columns]
     return df
 
