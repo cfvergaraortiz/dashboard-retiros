@@ -106,9 +106,25 @@ if df.empty:
     st.warning("No hay datos para esta selección.")
     st.stop()
 
-df["mes"]           = df["Clave_Año_Mes"] % 100
+# Detectar nombre de columna automáticamente
+if "Clave_Año_Mes" in df.columns:
+    col_ym = "Clave_Año_Mes"
+elif "Clave_Anio_Mes" in df.columns:
+    col_ym = "Clave_Anio_Mes"
+else:
+    # Fallback: buscar cualquier columna que contenga 'mes' (case insensitive)
+    matches = [c for c in df.columns if "mes" in c.lower()]
+    if matches:
+        col_ym = matches[0]
+    else:
+        st.error(f"No se encontró columna de período. Columnas disponibles: {list(df.columns)}")
+        st.stop()
+
+df["mes"]           = df[col_ym] % 100
 df["semestre"]      = df["mes"].apply(semestre_label)
-df["periodo_label"] = df["Clave_Año_Mes"].apply(periodo_label)
+df["periodo_label"] = df[col_ym].apply(periodo_label)
+df["semestre"]      = df["mes"].apply(semestre_label)
+df["periodo_label"] = df[col_ym].apply(periodo_label)
 
 # ─── Header ───
 barra_val = df["Barra"].iloc[0]       if "Barra"         in df.columns else "—"
@@ -121,7 +137,7 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 
 # ─── KPIs ───
-mensual = df.groupby(["Clave_Año_Mes","periodo_label"])["Medida_kWh"].sum().reset_index()
+mensual = df.groupby([col_ym,"periodo_label"])["Medida_kWh"].sum().reset_index()
 mensual.columns = ["ym","label","total_kwh"]
 mensual["total_mwh"] = mensual["total_kwh"] / 1000
 
@@ -207,15 +223,15 @@ st.plotly_chart(fig_d, use_container_width=True)
 
 # ─── Tabla histórico ───
 st.markdown('<div class="section-title">Histórico por Período</div>', unsafe_allow_html=True)
-hist = df.groupby(["Clave_Año_Mes","periodo_label"]).agg(
+hist = df.groupby([col_ym,"periodo_label"]).agg(
     Energía_kWh=("Medida_kWh","sum"),
     Potencia_Max_kW=("Medida_kWh","max"),
-).reset_index().sort_values("Clave_Año_Mes",ascending=False)
+).reset_index().sort_values(col_ym,ascending=False)
 
-solar_por_mes = df[df["Hora_Mensual"].between(8,17)].groupby("Clave_Año_Mes")["Medida_kWh"].sum()/1000
-noche_por_mes = df[~df["Hora_Mensual"].between(8,17)].groupby("Clave_Año_Mes")["Medida_kWh"].sum()/1000
-hist["Solar 08–17 MWh"] = hist["Clave_Año_Mes"].map(solar_por_mes).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
-hist["Noche 18–07 MWh"] = hist["Clave_Año_Mes"].map(noche_por_mes).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
+solar_por_mes = df[df["Hora_Mensual"].between(8,17)].groupby(col_ym)["Medida_kWh"].sum()/1000
+noche_por_mes = df[~df["Hora_Mensual"].between(8,17)].groupby(col_ym)["Medida_kWh"].sum()/1000
+hist["Solar 08–17 MWh"] = hist[col_ym].map(solar_por_mes).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
+hist["Noche 18–07 MWh"] = hist[col_ym].map(noche_por_mes).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
 hist["Energía MWh"]     = (hist["Energía_kWh"]/1000).map("{:,.1f}".format)
 hist["Potencia Máx kW"] = hist["Potencia_Max_kW"].map("{:,.2f}".format)
 
