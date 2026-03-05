@@ -86,7 +86,7 @@ def load_filtered(path, retiro, clave):
 
     # ── Fecha vectorizada: primer día del mes + días transcurridos ────────────
     # Nunca genera fechas inválidas porque clipeamos al máximo días del mes
-    month_start  = pd.to_datetime(df["anio_mes"].astype(str), format="%Y%m")
+    month_start  = pd.to_datetime(df["anio_mes"].astype(int).astype(str), format="%Y%m")
     dia_0indexed = ((df["hora_mensual"] - 1) // 24).clip(
         upper=(month_start.dt.days_in_month - 1).values
     )
