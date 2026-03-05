@@ -7,16 +7,16 @@ import requests
 import io
 import tempfile
 
-DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado.parquet"
+DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado_sinR.parquet"
 
 # ─────────────────────────────────────────────
 # PALETA Y ESTILOS
 # ─────────────────────────────────────────────
-AZUL_OSCURO  = "#009FE3"
+AZUL_OSCURO  = "#0f2942"
 AZUL_MEDIO   = "#1a5276"
-AZUL_CLARO   = "#FDCB00"
+AZUL_CLARO   = "#2e86c1"
 ACENTO       = "#1abc9c"
-GRIS_FONDO   = "#878782"
+GRIS_FONDO   = "#f0f4f8"
 BLANCO       = "#ffffff"
 
 TIPO_COLORS = {
@@ -162,6 +162,7 @@ if not col_ym:
     st.stop()
 
 # ── Calcular hora del día (0–23) desde Hora_Mensual (1–744)
+df["Medida_kWh"]    = df["Medida_kWh"].abs()
 df["hora_dia"]      = (df["Hora_Mensual"] - 1) % 24
 df["mes"]           = df[col_ym] % 100
 df["semestre"]      = df["mes"].apply(semestre_label)
