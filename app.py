@@ -149,12 +149,17 @@ if df.empty:
     st.stop()
 
 # ─── Header ───
-barra_val = df["barra"].iloc[0]        if "barra"         in df.columns else "—"
-sum_val   = df["suministrador"].iloc[0] if "suministrador" in df.columns else "—"
+barra_val    = df["barra"].iloc[0] if "barra" in df.columns else "—"
+suministradores = df["suministrador"].dropna().unique().tolist() if "suministrador" in df.columns else []
+sum_str = " &nbsp;·&nbsp; ".join(f"<b>{s}</b>" for s in sorted(suministradores))
+
 st.markdown(f"""
 <div class="header-box">
   <h2>⚡ &nbsp;{sel_retiro}</h2>
-  <p>Clave: <b>{sel_clave}</b> &nbsp;·&nbsp; Barra: <b>{barra_val}</b> &nbsp;·&nbsp; Suministrador: <b>{sum_val}</b></p>
+  <p>Clave: <b>{sel_clave}</b> &nbsp;·&nbsp; Barra: <b>{barra_val}</b></p>
+  <p style="margin-top:8px; font-size:.85rem;">
+    🏢 Suministrador{'es' if len(suministradores)>1 else ''}: {sum_str}
+  </p>
 </div>""", unsafe_allow_html=True)
 
 # ─── KPIs ───
@@ -178,19 +183,45 @@ kpi(k5, "Bloque Solar 08–17h", f"{pct_solar:.1f}%", f"{solar_kwh/1_000_000:.2f
 
 # ─── Consumo Mensual ───
 st.markdown('<div class="section-title">Consumo Mensual</div>', unsafe_allow_html=True)
-fig_bar = go.Figure(go.Bar(
-    x=mensual["label"], y=mensual["total_mwh"],
-    marker=dict(color=mensual["total_mwh"],
-                colorscale=[[0,"#aed6f1"],[1,AZUL_OSCURO]], showscale=False),
-    text=mensual["total_mwh"].apply(lambda v: f"{v:,.0f}"),
-    textposition="outside", textfont=dict(size=11, color=AZUL_OSCURO),
-))
+
+mensual_sum = df.groupby(["anio_mes","periodo_label","suministrador"])["medida_kwh"].sum().reset_index()
+mensual_sum["total_mwh"] = mensual_sum["medida_kwh"] / 1000
+sums_list   = sorted(mensual_sum["suministrador"].unique())
+colores_sum = px.colors.qualitative.Set2
+
+fig_bar = go.Figure()
+for i, s in enumerate(sums_list):
+    d = mensual_sum[mensual_sum["suministrador"]==s].sort_values("anio_mes")
+    fig_bar.add_trace(go.Bar(
+        x=d["periodo_label"], y=d["total_mwh"],
+        name=s,
+        marker_color=colores_sum[i % len(colores_sum)],
+        hovertemplate="%{x}<br>" + s + ": %{y:,.0f} MWh<extra></extra>",
+    ))
+
+# Línea con total mensual encima
+for _, row in mensual.iterrows():
+    pass  # totales ya calculados arriba
+
 fig_bar.update_layout(
-    height=330, margin=dict(t=20,b=10,l=50,r=20),
+    barmode="stack",
+    height=350, margin=dict(t=20,b=10,l=50,r=20),
     plot_bgcolor=BLANCO, paper_bgcolor=GRIS_FONDO,
     yaxis=dict(title="MWh", gridcolor="#e8ecf0", tickformat=",.0f"),
-    xaxis=dict(tickangle=-30), showlegend=False,
+    xaxis=dict(tickangle=-30),
+    legend=dict(orientation="h", y=-0.25, font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
 )
+
+# Anotaciones con total sobre cada barra
+for _, row in mensual.iterrows():
+    fig_bar.add_annotation(
+        x=row["label"], y=row["total_mwh"],
+        text=f"{row['total_mwh']:,.0f}",
+        showarrow=False, yanchor="bottom",
+        font=dict(size=10, color=AZUL_OSCURO),
+        yshift=3,
+    )
+
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ─── Curvas por semestre ───
