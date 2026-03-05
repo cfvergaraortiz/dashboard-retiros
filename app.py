@@ -85,18 +85,14 @@ def load_filtered(path, retiro, clave):
     df["periodo_label"] = df["anio_mes"].apply(periodo_label)
 
     # ── Fecha: año/mes de anio_mes + día calculado desde hora_mensual ──────────
+    # hora_mensual va de 1 a N*24 (N = días reales del mes), nunca genera día inválido
     df["dia_del_mes"] = ((df["hora_mensual"].astype(int) - 1) // 24 + 1)
     anio_mes_int      = df["anio_mes"].astype(int)
-
-    # ✅ FIX: construcción robusta tolerante a días inválidos (ej: día 31 en mes de 30)
-    df["fecha"] = pd.to_datetime(
-        (anio_mes_int // 100).astype(str) + "-" +
-        (anio_mes_int % 100).astype(str).str.zfill(2) + "-" +
-        df["dia_del_mes"].astype(str).str.zfill(2),
-        format="%Y-%m-%d",
-        errors="coerce",  # fechas inválidas quedan como NaT en lugar de lanzar error
-    )
-
+    df["fecha"] = pd.to_datetime({
+        "year":  anio_mes_int // 100,
+        "month": anio_mes_int % 100,
+        "day":   df["dia_del_mes"],
+    })
     df["dia_semana"]    = df["fecha"].dt.dayofweek           # 0=Lun … 6=Dom
     df["dia_semana_label"] = df["dia_semana"].map(DIAS_SEMANA_LABEL)
     es_feriado          = df["fecha"].dt.date.isin(CL_HOLIDAYS)
