@@ -86,10 +86,11 @@ def load_filtered(path, retiro, clave):
 
     # ── Fecha: año/mes de anio_mes + día calculado desde hora_mensual ──────────
     # hora_mensual va de 1 a N*24 (N = días reales del mes), nunca genera día inválido
-    df["dia_del_mes"] = (df["hora_mensual"] - 1) // 24 + 1
+    df["dia_del_mes"] = ((df["hora_mensual"].astype(int) - 1) // 24 + 1)
+    anio_mes_int      = df["anio_mes"].astype(int)
     df["fecha"] = pd.to_datetime({
-        "year":  df["anio_mes"] // 100,
-        "month": df["anio_mes"] % 100,
+        "year":  anio_mes_int // 100,
+        "month": anio_mes_int % 100,
         "day":   df["dia_del_mes"],
     })
     df["dia_semana"]    = df["fecha"].dt.dayofweek           # 0=Lun … 6=Dom
