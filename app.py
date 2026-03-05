@@ -28,8 +28,9 @@ def get_parquet_path():
 # HELPERS DUCKDB — consultas directas al archivo
 # ─────────────────────────────────────────────
 def query(sql: str, path: str) -> pd.DataFrame:
+    con = duckdb.connect()
     sql = sql.replace("__PATH__", f"'{path}'")
-    return duckdb.query(sql).df()
+    return con.execute(sql).df()
 
 def periodo_label(ym: int) -> str:
     meses = ["Ene","Feb","Mar","Abr","May","Jun",
