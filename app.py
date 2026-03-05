@@ -7,7 +7,7 @@ import requests
 import io
 import tempfile
 
-DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado_sinR.parquet"
+DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado.parquet"
 
 # ─────────────────────────────────────────────
 # PALETA Y ESTILOS
