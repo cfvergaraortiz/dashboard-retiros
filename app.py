@@ -11,7 +11,7 @@ import re
 # ─────────────────────────────────────────────
 # CONFIGURACIÓN — pega aquí tu link de OneDrive
 # ─────────────────────────────────────────────
-ONEDRIVE_SHARE_URL = "https://1drv.ms/u/c/0da2ba1c949328fa/IQDMIYZ2FvFKRK9wfOwiXBHJAX3Aty5GRYNiXYfxdVSqi98?e=fWnEcM"
+ONEDRIVE_SHARE_URL = "https://1drv.ms/u/c/0da2ba1c949328fa/IQBihOHamFzCRI4mEXee2viHAXB38PARwrAbBKkPJnffesE?e=pYoUWh"
 # Ejemplo: "https://1drv.ms/u/s!Abc123..."
 
 # ─────────────────────────────────────────────
