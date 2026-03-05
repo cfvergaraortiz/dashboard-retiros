@@ -5,7 +5,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 import requests
 import tempfile
-import holidays as hd_lib
+try:
+    import holidays as hd_lib
+    _HAS_HOLIDAYS_LIB = True
+except ImportError:
+    _HAS_HOLIDAYS_LIB = False
 
 DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_base_2601.parquet"
 
@@ -40,12 +44,27 @@ DIAS_SEMANA_COLORS = [
     "#8e44ad", "#1abc9c", "#2c3e50",
 ]
 
-# Feriados chilenos para rango de años relevante
+# Feriados chilenos ──────────────────────────────────────────────────────────
 def build_cl_holidays(years=range(2018, 2031)):
-    cl = set()
+    import datetime as _dt
+    if _HAS_HOLIDAYS_LIB:
+        cl = set()
+        for yr in years:
+            cl.update(hd_lib.Chile(years=yr).keys())
+        return cl
+    # Fallback: feriados fijos de Chile
+    fixed = [
+        (1,  1), (5,  1), (5, 21), (6, 29), (7, 16), (8, 15),
+        (9, 18), (9, 19), (10,12), (10,31), (11, 1), (12, 8), (12,25),
+    ]
+    result = set()
     for yr in years:
-        cl.update(hd_lib.Chile(years=yr).keys())
-    return cl
+        for m, d in fixed:
+            try:
+                result.add(_dt.date(yr, m, d))
+            except ValueError:
+                pass
+    return result
 
 CL_HOLIDAYS = build_cl_holidays()
 
