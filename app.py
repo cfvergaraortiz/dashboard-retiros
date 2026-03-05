@@ -4,31 +4,31 @@ import pyarrow.parquet as pq
 import plotly.graph_objects as go
 import plotly.express as px
 import requests
-import io
 import tempfile
 
-DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_base_2601.parquet"
+DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado_sinR.parquet"
 
 # ─────────────────────────────────────────────
-# PALETA Y ESTILOS
+# PALETA
 # ─────────────────────────────────────────────
-AZUL_OSCURO  = "#009fe3"
-AZUL_MEDIO   = "#fcdb00"
-AZUL_CLARO   = "#2e86c1"
-ACENTO       = "#1abc9c"
-GRIS_FONDO   = "#f0f4f8"
-BLANCO       = "#ffffff"
+AZUL_OSCURO = "#0f2942"
+AZUL_MEDIO  = "#1a5276"
+AZUL_CLARO  = "#2e86c1"
+ACENTO      = "#1abc9c"
+GRIS_FONDO  = "#f0f4f8"
+BLANCO      = "#ffffff"
 
 TIPO_COLORS = {
-    "Lunes a Viernes No Feriado":   AZUL_CLARO,
-    "Lunes a Viernes (No Feriado)": AZUL_CLARO,
-    "Sábado":   "#e67e22",
-    "Domingo":  ACENTO,
-    "Feriado":  "#e74c3c",
+    "L_D": AZUL_CLARO,
+    "L":   "#e67e22",
+}
+TIPO_LABELS = {
+    "L_D": "Lunes a Viernes (No Feriado)",
+    "L":   "Feriado / Fin de semana",
 }
 
 # ─────────────────────────────────────────────
-# DESCARGA — solo una vez, guarda en disco
+# DESCARGA
 # ─────────────────────────────────────────────
 @st.cache_resource(show_spinner="Descargando datos (primera vez ~1 min)…")
 def get_parquet_path():
@@ -42,92 +42,88 @@ def get_parquet_path():
 
 @st.cache_data(show_spinner=False)
 def get_retiros(path):
-    return sorted(pq.read_table(path, columns=["Retiro"])
-                  .to_pandas()["Retiro"].dropna().unique().tolist())
+    return sorted(pq.read_table(path, columns=["retiro"])
+                  .to_pandas()["retiro"].dropna().unique().tolist())
 
 @st.cache_data(show_spinner=False)
 def get_claves(path, retiro):
-    t = pq.read_table(path, columns=["Retiro","clave"],
-                      filters=[("Retiro","=",retiro)])
+    t = pq.read_table(path, columns=["retiro","clave"],
+                      filters=[("retiro","=",retiro)])
     return sorted(t.to_pandas()["clave"].dropna().unique().tolist())
 
-@st.cache_data(show_spinner="Filtrando datos…")
+@st.cache_data(show_spinner="Cargando datos del retiro…")
 def load_filtered(path, retiro, clave):
-    t = pq.read_table(path, filters=[("Retiro","=",retiro),("clave","=",clave)])
-    return t.to_pandas()
+    t = pq.read_table(path, filters=[("retiro","=",retiro),("clave","=",clave)])
+    df = t.to_pandas()
+    df["medida_kwh"] = df["medida_kwh"].abs()
+    df["hora_dia"]   = (df["hora_mensual"] - 1) % 24
+    df["mes"]        = df["anio_mes"] % 100
+    df["semestre"]   = df["mes"].apply(lambda m: "Oct–Mar" if m in [10,11,12,1,2,3] else "Abr–Sep")
+    df["periodo_label"] = df["anio_mes"].apply(periodo_label)
+    df["tipo_label"] = df["tipo"].map(TIPO_LABELS).fillna(df["tipo"])
+    return df
 
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
-def detect_col_ym(df):
-    for c in ["Clave_Año_Mes", "Clave_Anio_Mes"]:
-        if c in df.columns:
-            return c
-    matches = [c for c in df.columns if "mes" in c.lower()]
-    return matches[0] if matches else None
-
 def periodo_label(ym):
     meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
     y, m = divmod(int(ym), 100)
     return f"{meses[m-1]} {y}"
 
-def semestre_label(mes):
-    return "Oct–Mar" if mes in [10,11,12,1,2,3] else "Abr–Sep"
+def kpi(col, label, value, sub="", acento=False):
+    cls = "kpi-card acento" if acento else "kpi-card"
+    col.markdown(f"""<div class="{cls}">
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-sub">{sub}</div>
+    </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # PÁGINA
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Dashboard Retiros", layout="wide", page_icon="⚡")
-
 st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap');
-
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
     html, body, [class*="css"] {{ font-family: 'DM Sans', sans-serif; }}
     .main {{ background-color: {GRIS_FONDO}; }}
     .block-container {{ padding-top: 1.5rem; }}
-
     .header-box {{
         background: linear-gradient(135deg, {AZUL_OSCURO} 0%, {AZUL_MEDIO} 60%, {AZUL_CLARO} 100%);
         border-radius: 12px; padding: 22px 32px; margin-bottom: 24px; color: white;
         box-shadow: 0 4px 16px rgba(15,41,66,.25);
     }}
-    .header-box h2 {{ margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }}
-    .header-box p  {{ margin: 6px 0 0 0; font-size: .88rem; opacity: .80; }}
-    .header-box b  {{ opacity: 1; font-weight: 600; }}
-
+    .header-box h2 {{ margin:0; font-size:1.4rem; font-weight:700; letter-spacing:-.02em; }}
+    .header-box p  {{ margin:6px 0 0 0; font-size:.88rem; opacity:.80; }}
+    .header-box b  {{ opacity:1; font-weight:600; }}
     .kpi-card {{
-        background: {BLANCO}; border-radius: 10px; padding: 18px 16px 14px;
-        box-shadow: 0 2px 8px rgba(0,0,0,.07); text-align: center;
-        border-top: 3px solid {AZUL_CLARO};
+        background:{BLANCO}; border-radius:10px; padding:18px 16px 14px;
+        box-shadow:0 2px 8px rgba(0,0,0,.07); text-align:center;
+        border-top:3px solid {AZUL_CLARO};
     }}
-    .kpi-label {{ font-size: .68rem; color: #7f8c8d; text-transform: uppercase;
-                  letter-spacing: .08em; font-weight: 600; margin-bottom: 6px; }}
-    .kpi-value {{ font-size: 1.55rem; font-weight: 700; color: {AZUL_OSCURO}; line-height: 1.1; }}
-    .kpi-sub   {{ font-size: .72rem; color: #95a5a6; margin-top: 4px; }}
-    .kpi-card.acento {{ border-top-color: {ACENTO}; }}
-    .kpi-card.acento .kpi-value {{ color: #0e6655; }}
-
+    .kpi-label {{ font-size:.68rem; color:#7f8c8d; text-transform:uppercase;
+                  letter-spacing:.08em; font-weight:600; margin-bottom:6px; }}
+    .kpi-value {{ font-size:1.55rem; font-weight:700; color:{AZUL_OSCURO}; line-height:1.1; }}
+    .kpi-sub   {{ font-size:.72rem; color:#95a5a6; margin-top:4px; }}
+    .kpi-card.acento {{ border-top-color:{ACENTO}; }}
+    .kpi-card.acento .kpi-value {{ color:#0e6655; }}
     .section-title {{
-        font-size: .9rem; font-weight: 700; color: {AZUL_OSCURO};
-        border-left: 4px solid {ACENTO}; padding-left: 10px;
-        margin: 28px 0 14px 0; text-transform: uppercase; letter-spacing: .05em;
+        font-size:.9rem; font-weight:700; color:{AZUL_OSCURO};
+        border-left:4px solid {ACENTO}; padding-left:10px;
+        margin:28px 0 14px 0; text-transform:uppercase; letter-spacing:.05em;
     }}
-
-    section[data-testid="stSidebar"] {{
-        background: {AZUL_OSCURO};
-    }}
-    section[data-testid="stSidebar"] * {{ color: white !important; }}
+    section[data-testid="stSidebar"] {{ background:{AZUL_OSCURO}; }}
+    section[data-testid="stSidebar"] * {{ color:white !important; }}
     section[data-testid="stSidebar"] .stSelectbox > div > div {{
-        background: rgba(255,255,255,.1) !important;
-        border: 1px solid rgba(255,255,255,.2) !important;
-        border-radius: 8px !important;
+        background:rgba(255,255,255,.1) !important;
+        border:1px solid rgba(255,255,255,.2) !important;
+        border-radius:8px !important;
     }}
-    hr {{ border-color: rgba(255,255,255,.15) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Descargar archivo ───
+# ─── Descargar ───
 try:
     parquet_path = get_parquet_path()
 except Exception as e:
@@ -138,13 +134,10 @@ except Exception as e:
 with st.sidebar:
     st.markdown("### ⚡ Dashboard Retiros")
     st.markdown("---")
-
     retiros    = get_retiros(parquet_path)
     sel_retiro = st.selectbox("Retiro", retiros)
-
-    claves    = get_claves(parquet_path, sel_retiro)
-    sel_clave = st.selectbox("Clave", claves)
-
+    claves     = get_claves(parquet_path, sel_retiro)
+    sel_clave  = st.selectbox("Clave", claves)
     st.markdown("---")
     st.caption(f"📦 {len(retiros):,} retiros disponibles")
 
@@ -155,22 +148,9 @@ if df.empty:
     st.warning("No hay datos para esta selección.")
     st.stop()
 
-# Detectar columna de período
-col_ym = detect_col_ym(df)
-if not col_ym:
-    st.error(f"No se encontró columna de período. Columnas: {list(df.columns)}")
-    st.stop()
-
-# ── Calcular hora del día (0–23) desde Hora_Mensual (1–744)
-df["Medida_kWh"]    = df["Medida_kWh"].abs()
-df["hora_dia"]      = (df["Hora_Mensual"] - 1) % 24
-df["mes"]           = df[col_ym] % 100
-df["semestre"]      = df["mes"].apply(semestre_label)
-df["periodo_label"] = df[col_ym].apply(periodo_label)
-
 # ─── Header ───
-barra_val = df["Barra"].iloc[0]        if "Barra"         in df.columns else "—"
-sum_val   = df["Suministrador"].iloc[0] if "Suministrador" in df.columns else "—"
+barra_val = df["barra"].iloc[0]        if "barra"         in df.columns else "—"
+sum_val   = df["suministrador"].iloc[0] if "suministrador" in df.columns else "—"
 st.markdown(f"""
 <div class="header-box">
   <h2>⚡ &nbsp;{sel_retiro}</h2>
@@ -178,7 +158,7 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 
 # ─── KPIs ───
-mensual = df.groupby([col_ym,"periodo_label"])["Medida_kWh"].sum().reset_index()
+mensual = df.groupby(["anio_mes","periodo_label"])["medida_kwh"].sum().reset_index()
 mensual.columns = ["ym","label","total_kwh"]
 mensual["total_mwh"] = mensual["total_kwh"] / 1000
 
@@ -186,16 +166,8 @@ total_anual  = mensual["total_kwh"].sum() / 1_000_000
 min_mes      = mensual.loc[mensual["total_kwh"].idxmin()]
 max_mes      = mensual.loc[mensual["total_kwh"].idxmax()]
 promedio_mes = mensual["total_kwh"].mean() / 1000
-solar_kwh    = df[df["hora_dia"].between(8,17)]["Medida_kWh"].sum()
-pct_solar    = solar_kwh / df["Medida_kWh"].sum() * 100 if df["Medida_kWh"].sum() > 0 else 0
-
-def kpi(col, label, value, sub="", acento=False):
-    cls = "kpi-card acento" if acento else "kpi-card"
-    col.markdown(f"""<div class="{cls}">
-        <div class="kpi-label">{label}</div>
-        <div class="kpi-value">{value}</div>
-        <div class="kpi-sub">{sub}</div>
-    </div>""", unsafe_allow_html=True)
+solar_kwh    = df[df["hora_dia"].between(8,17)]["medida_kwh"].sum()
+pct_solar    = solar_kwh / df["medida_kwh"].sum() * 100 if df["medida_kwh"].sum() > 0 else 0
 
 k1,k2,k3,k4,k5 = st.columns(5)
 kpi(k1, "Energía Anual",       f"{total_anual:.3f} GWh")
@@ -206,14 +178,10 @@ kpi(k5, "Bloque Solar 08–17h", f"{pct_solar:.1f}%", f"{solar_kwh/1_000_000:.2f
 
 # ─── Consumo Mensual ───
 st.markdown('<div class="section-title">Consumo Mensual</div>', unsafe_allow_html=True)
-
 fig_bar = go.Figure(go.Bar(
     x=mensual["label"], y=mensual["total_mwh"],
-    marker=dict(
-        color=mensual["total_mwh"],
-        colorscale=[[0, "#aed6f1"], [1, AZUL_OSCURO]],
-        showscale=False,
-    ),
+    marker=dict(color=mensual["total_mwh"],
+                colorscale=[[0,"#aed6f1"],[1,AZUL_OSCURO]], showscale=False),
     text=mensual["total_mwh"].apply(lambda v: f"{v:,.0f}"),
     textposition="outside", textfont=dict(size=11, color=AZUL_OSCURO),
 ))
@@ -221,32 +189,29 @@ fig_bar.update_layout(
     height=330, margin=dict(t=20,b=10,l=50,r=20),
     plot_bgcolor=BLANCO, paper_bgcolor=GRIS_FONDO,
     yaxis=dict(title="MWh", gridcolor="#e8ecf0", tickformat=",.0f"),
-    xaxis=dict(tickangle=-30),
-    showlegend=False,
+    xaxis=dict(tickangle=-30), showlegend=False,
 )
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ─── Curvas por semestre ───
 st.markdown('<div class="section-title">Curvas de Consumo por Hora y Tipo de Día</div>', unsafe_allow_html=True)
-
 col_oct, col_abr = st.columns(2)
-for col_ui, sem in [(col_oct,"Oct–Mar"), (col_abr,"Abr–Sep")]:
+for col_ui, sem in [(col_oct,"Oct–Mar"),(col_abr,"Abr–Sep")]:
     df_sem = df[df["semestre"] == sem]
     if df_sem.empty:
         col_ui.info(f"Sin datos para {sem}")
         continue
-
-    # Promedio por hora_dia (0–23) y tipo de día
-    curva = df_sem.groupby(["hora_dia","Tipo"])["Medida_kWh"].mean().reset_index()
-    top   = curva["Medida_kWh"].max() or 1
-
+    curva = df_sem.groupby(["hora_dia","tipo_label"])["medida_kwh"].mean().reset_index()
+    top   = curva["medida_kwh"].max() or 1
     fig_c = go.Figure()
-    for tipo in curva["Tipo"].unique():
-        d = curva[curva["Tipo"]==tipo].sort_values("hora_dia")
+    for tipo in curva["tipo_label"].unique():
+        d = curva[curva["tipo_label"]==tipo].sort_values("hora_dia")
+        color = TIPO_COLORS.get(
+            next((k for k,v in TIPO_LABELS.items() if v==tipo), tipo), "#999")
         fig_c.add_trace(go.Scatter(
-            x=d["hora_dia"], y=d["Medida_kWh"]/top*100,
+            x=d["hora_dia"], y=d["medida_kwh"]/top*100,
             mode="lines", name=tipo,
-            line=dict(color=TIPO_COLORS.get(tipo,"#999"), width=2.5),
+            line=dict(color=color, width=2.5),
             hovertemplate="%{x}h: %{y:.1f}%<extra>" + tipo + "</extra>",
         ))
     fig_c.update_layout(
@@ -262,16 +227,13 @@ for col_ui, sem in [(col_oct,"Oct–Mar"), (col_abr,"Abr–Sep")]:
 
 # ─── Consumo Diario Promedio ───
 st.markdown('<div class="section-title">Consumo Promedio por Hora y Tipo de Día [kWh]</div>', unsafe_allow_html=True)
-
-diario = df.groupby(["hora_dia","Tipo"])["Medida_kWh"].mean().reset_index()
-tipos  = sorted(diario["Tipo"].unique())
+diario  = df.groupby(["hora_dia","tipo_label"])["medida_kwh"].mean().reset_index()
 palette = [AZUL_CLARO, "#e67e22", ACENTO, "#e74c3c", "#8e44ad", "#2ecc71"]
-
-fig_d = go.Figure()
-for i, tipo in enumerate(tipos):
-    d = diario[diario["Tipo"]==tipo].sort_values("hora_dia")
+fig_d   = go.Figure()
+for i, tipo in enumerate(sorted(diario["tipo_label"].unique())):
+    d = diario[diario["tipo_label"]==tipo].sort_values("hora_dia")
     fig_d.add_trace(go.Scatter(
-        x=d["hora_dia"], y=d["Medida_kWh"],
+        x=d["hora_dia"], y=d["medida_kwh"],
         mode="lines+markers", name=tipo,
         line=dict(color=palette[i % len(palette)], width=2.5),
         marker=dict(size=5),
@@ -289,19 +251,18 @@ st.plotly_chart(fig_d, use_container_width=True)
 
 # ─── Tabla histórico ───
 st.markdown('<div class="section-title">Histórico por Período</div>', unsafe_allow_html=True)
+hist = df.groupby(["anio_mes","periodo_label"]).agg(
+    energia_kwh    =("medida_kwh","sum"),
+    potencia_max_kw=("medida_kwh","max"),
+).reset_index().sort_values("anio_mes", ascending=False)
 
-hist = df.groupby([col_ym,"periodo_label"]).agg(
-    Energía_kWh    =("Medida_kWh","sum"),
-    Potencia_Max_kW=("Medida_kWh","max"),
-).reset_index().sort_values(col_ym, ascending=False)
+solar_pm = df[df["hora_dia"].between(8,17)].groupby("anio_mes")["medida_kwh"].sum()/1000
+noche_pm = df[~df["hora_dia"].between(8,17)].groupby("anio_mes")["medida_kwh"].sum()/1000
 
-solar_pm = df[df["hora_dia"].between(8,17)].groupby(col_ym)["Medida_kWh"].sum()/1000
-noche_pm = df[~df["hora_dia"].between(8,17)].groupby(col_ym)["Medida_kWh"].sum()/1000
-
-hist["Energía MWh"]     = (hist["Energía_kWh"]/1000).map("{:,.1f}".format)
-hist["Solar 08–17 MWh"] = hist[col_ym].map(solar_pm).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
-hist["Noche 18–07 MWh"] = hist[col_ym].map(noche_pm).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
-hist["Potencia Máx kW"] = hist["Potencia_Max_kW"].map("{:,.2f}".format)
+hist["Energía MWh"]     = (hist["energia_kwh"]/1000).map("{:,.1f}".format)
+hist["Solar 08–17 MWh"] = hist["anio_mes"].map(solar_pm).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
+hist["Noche 18–07 MWh"] = hist["anio_mes"].map(noche_pm).map(lambda v: f"{v:,.1f}" if pd.notna(v) else "—")
+hist["Potencia Máx kW"] = hist["potencia_max_kw"].map("{:,.2f}".format)
 
 st.dataframe(
     hist[["periodo_label","Energía MWh","Solar 08–17 MWh","Noche 18–07 MWh","Potencia Máx kW"]]
