@@ -9,20 +9,18 @@ import io
 import re
 
 # ─────────────────────────────────────────────
-# CONFIGURACIÓN — pega aquí tu link de OneDrive
+# CONFIGURACIÓN — URL de descarga directa desde GitHub Releases
+# Ejemplo: "https://github.com/tu-usuario/dashboard-retiros/releases/download/v1.0/datos.parquet"
 # ─────────────────────────────────────────────
-ONEDRIVE_SHARE_URL = "https://1drv.ms/u/c/0da2ba1c949328fa/IQBihOHamFzCRI4mEXee2viHAXlAHJHegpvjcFuuKsbko2I?e=HEWhJf"
-# Ejemplo: "https://1drv.ms/u/s!Abc123..."
+DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado_sinR.parquet"
 
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
 
-@st.cache_data(show_spinner="Cargando datos desde OneDrive…", ttl=3600)
+@st.cache_data(show_spinner="Cargando datos…", ttl=3600)
 def load_data(url: str) -> pd.DataFrame:
-    # url debe ser el link de DESCARGA DIRECTA de OneDrive
-    # (clic derecho en botón Descargar → copiar dirección del enlace)
-    resp = requests.get(url, timeout=120)
+    resp = requests.get(url, timeout=180)
     resp.raise_for_status()
     df = pd.read_parquet(io.BytesIO(resp.content))
     df.columns = [c.strip() for c in df.columns]
@@ -85,12 +83,12 @@ with st.sidebar:
     st.image("https://img.icons8.com/fluency/48/lightning-bolt.png", width=40)
     st.title("Filtros")
 
-    if ONEDRIVE_SHARE_URL == "PEGA_AQUI_TU_LINK_DE_ONEDRIVE":
-        st.error("⚠️ Configura el link de OneDrive en `app.py`")
+    if DATA_URL == "PEGA_AQUI_TU_LINK_DE_GITHUB_RELEASES":
+        st.error("⚠️ Configura el link de GitHub Releases en `app.py`")
         st.stop()
 
     try:
-        df_all = load_data(ONEDRIVE_SHARE_URL)
+        df_all = load_data(DATA_URL)
     except Exception as e:
         st.error(f"Error al cargar datos:\n{e}")
         st.stop()
