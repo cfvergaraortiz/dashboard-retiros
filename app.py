@@ -16,7 +16,7 @@ AZUL_OSCURO  = "#009FE3"
 AZUL_MEDIO   = "#1a5276"
 AZUL_CLARO   = "#FDCB00"
 ACENTO       = "#1abc9c"
-GRIS_FONDO   = "#f0f4f8"
+GRIS_FONDO   = "#878787"
 BLANCO       = "#ffffff"
 
 TIPO_COLORS = {
