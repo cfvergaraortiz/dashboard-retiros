@@ -6,7 +6,7 @@ import plotly.express as px
 import requests
 import tempfile
 
-DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_normalizado_sinR.parquet"
+DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_base_2601.parquet"
 
 # ─────────────────────────────────────────────
 # PALETA
