@@ -84,13 +84,14 @@ def load_filtered(path, retiro, clave):
     df["semestre"]   = df["mes"].apply(lambda m: "Oct–Mar" if m in [10,11,12,1,2,3] else "Abr–Sep")
     df["periodo_label"] = df["anio_mes"].apply(periodo_label)
 
-    # ── Fecha vectorizada: primer día del mes + días transcurridos ────────────
-    # Nunca genera fechas inválidas porque clipeamos al máximo días del mes
-    month_start  = pd.to_datetime(df["anio_mes"].astype(int).astype(str), format="%Y%m")
-    dia_0indexed = ((df["hora_mensual"] - 1) // 24).clip(
-        upper=(month_start.dt.days_in_month - 1).values
-    )
-    df["fecha"]         = month_start + pd.to_timedelta(dia_0indexed, unit="D")
+    # ── Fecha: año/mes de anio_mes + día calculado desde hora_mensual ──────────
+    # hora_mensual va de 1 a N*24 (N = días reales del mes), nunca genera día inválido
+    df["dia_del_mes"] = (df["hora_mensual"] - 1) // 24 + 1
+    df["fecha"] = pd.to_datetime({
+        "year":  df["anio_mes"] // 100,
+        "month": df["anio_mes"] % 100,
+        "day":   df["dia_del_mes"],
+    })
     df["dia_semana"]    = df["fecha"].dt.dayofweek           # 0=Lun … 6=Dom
     df["dia_semana_label"] = df["dia_semana"].map(DIAS_SEMANA_LABEL)
     es_feriado          = df["fecha"].dt.date.isin(CL_HOLIDAYS)
