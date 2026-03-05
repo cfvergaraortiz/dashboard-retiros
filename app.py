@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import requests
 import tempfile
+import holidays as hd_lib
 
 DATA_URL = "https://github.com/cfvergaraortiz/dashboard-retiros/releases/download/v1.0/retiros_base_2601.parquet"
 
@@ -18,14 +19,35 @@ ACENTO      = "#1abc9c"
 GRIS_FONDO  = "#f0f4f8"
 BLANCO      = "#ffffff"
 
-TIPO_COLORS = {
-    "L_D": AZUL_CLARO,
-    "L":   "#e67e22",
+TIPO_DET_COLORS = {
+    "Lunes a Viernes": AZUL_CLARO,
+    "Sábado":          "#e67e22",
+    "Domingo":         "#e74c3c",
+    "Feriado":         ACENTO,
 }
-TIPO_LABELS = {
-    "L_D": "Lunes a Viernes (No Feriado)",
-    "L":   "Feriado / Fin de semana",
+
+DIAS_SEMANA_LABEL = {
+    0: "Lunes",
+    1: "Martes",
+    2: "Miércoles",
+    3: "Jueves",
+    4: "Viernes",
+    5: "Sábado",
+    6: "Domingo",
 }
+DIAS_SEMANA_COLORS = [
+    "#009FE3", "#FCDB00", "#e67e22", "#e74c3c",
+    "#8e44ad", "#1abc9c", "#2c3e50",
+]
+
+# Feriados chilenos para rango de años relevante
+def build_cl_holidays(years=range(2018, 2031)):
+    cl = set()
+    for yr in years:
+        cl.update(hd_lib.Chile(years=yr).keys())
+    return cl
+
+CL_HOLIDAYS = build_cl_holidays()
 
 # ─────────────────────────────────────────────
 # DESCARGA
@@ -58,9 +80,30 @@ def load_filtered(path, retiro, clave):
     df["medida_kwh"] = df["medida_kwh"].abs()
     df["hora_dia"]   = (df["hora_mensual"] - 1) % 24
     df["mes"]        = df["anio_mes"] % 100
+    df["anio"]       = df["anio_mes"] // 100
     df["semestre"]   = df["mes"].apply(lambda m: "Oct–Mar" if m in [10,11,12,1,2,3] else "Abr–Sep")
     df["periodo_label"] = df["anio_mes"].apply(periodo_label)
-    df["tipo_label"] = df["tipo"].map(TIPO_LABELS).fillna(df["tipo"])
+
+    # ── Fecha y día de semana ──────────────────────────────────────────────────
+    df["dia_del_mes"] = (df["hora_mensual"] - 1) // 24 + 1
+    df["fecha"] = pd.to_datetime(
+        df[["anio","mes","dia_del_mes"]].rename(
+            columns={"anio":"year","mes":"month","dia_del_mes":"day"}
+        )
+    )
+    df["dia_semana"]       = df["fecha"].dt.dayofweek          # 0=Lun … 6=Dom
+    df["dia_semana_label"] = df["dia_semana"].map(DIAS_SEMANA_LABEL)
+    df["es_feriado"]       = df["fecha"].dt.date.apply(lambda d: d in CL_HOLIDAYS)
+
+    def _tipo_det(row):
+        if row["es_feriado"]:
+            return "Feriado"
+        dw = row["dia_semana"]
+        if dw == 5: return "Sábado"
+        if dw == 6: return "Domingo"
+        return "Lunes a Viernes"
+
+    df["tipo_detallado"] = df.apply(_tipo_det, axis=1)
     return df
 
 # ─────────────────────────────────────────────
@@ -71,12 +114,14 @@ def periodo_label(ym):
     y, m = divmod(int(ym), 100)
     return f"{meses[m-1]} {y}"
 
-def kpi(col, label, value, sub="", acento=False):
+def kpi(col, label, value, sub="", sub2="", acento=False):
     cls = "kpi-card acento" if acento else "kpi-card"
+    sub2_html = f'<div class="kpi-sub2">{sub2}</div>' if sub2 else ""
     col.markdown(f"""<div class="{cls}">
         <div class="kpi-label">{label}</div>
         <div class="kpi-value">{value}</div>
         <div class="kpi-sub">{sub}</div>
+        {sub2_html}
     </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
@@ -106,6 +151,7 @@ st.markdown(f"""
                   letter-spacing:.08em; font-weight:600; margin-bottom:6px; }}
     .kpi-value {{ font-size:1.55rem; font-weight:700; color:{AZUL_OSCURO}; line-height:1.1; }}
     .kpi-sub   {{ font-size:.72rem; color:#95a5a6; margin-top:4px; }}
+    .kpi-sub2  {{ font-size:.70rem; color:#bdc3c7; margin-top:2px; font-style:italic; }}
     .kpi-card.acento {{ border-top-color:{ACENTO}; }}
     .kpi-card.acento .kpi-value {{ color:#0e6655; }}
     .section-title {{
@@ -149,9 +195,9 @@ if df.empty:
     st.stop()
 
 # ─── Header ───
-barra_val    = df["barra"].iloc[0] if "barra" in df.columns else "—"
+barra_val       = df["barra"].iloc[0] if "barra" in df.columns else "—"
 suministradores = df["suministrador"].dropna().unique().tolist() if "suministrador" in df.columns else []
-sum_str = " &nbsp;·&nbsp; ".join(f"<b>{s}</b>" for s in sorted(suministradores))
+sum_str         = " &nbsp;·&nbsp; ".join(f"<b>{s}</b>" for s in sorted(suministradores))
 
 st.markdown(f"""
 <div class="header-box">
@@ -162,26 +208,56 @@ st.markdown(f"""
   </p>
 </div>""", unsafe_allow_html=True)
 
-# ─── KPIs ───
+# ─── KPIs ───────────────────────────────────────────────────────────────────
 mensual = df.groupby(["anio_mes","periodo_label"])["medida_kwh"].sum().reset_index()
 mensual.columns = ["ym","label","total_kwh"]
 mensual["total_mwh"] = mensual["total_kwh"] / 1000
 
 total_anual  = mensual["total_kwh"].sum() / 1_000_000
-min_mes      = mensual.loc[mensual["total_kwh"].idxmin()]
-max_mes      = mensual.loc[mensual["total_kwh"].idxmax()]
 promedio_mes = mensual["total_kwh"].mean() / 1000
-solar_kwh    = df[df["hora_dia"].between(8,17)]["medida_kwh"].sum()
-pct_solar    = solar_kwh / df["medida_kwh"].sum() * 100 if df["medida_kwh"].sum() > 0 else 0
 
-k1,k2,k3,k4,k5 = st.columns(5)
+# ── Min/Max mensual + hora pico dentro del mes ───────────────────────────────
+min_mes = mensual.loc[mensual["total_kwh"].idxmin()]
+max_mes = mensual.loc[mensual["total_kwh"].idxmax()]
+
+hora_pico_max = int(
+    df[df["anio_mes"] == max_mes["ym"]]
+    .groupby("hora_dia")["medida_kwh"].mean().idxmax()
+)
+hora_pico_min = int(
+    df[df["anio_mes"] == min_mes["ym"]]
+    .groupby("hora_dia")["medida_kwh"].mean().idxmax()
+)
+
+# ── Solar ────────────────────────────────────────────────────────────────────
+solar_kwh = df[df["hora_dia"].between(8,17)]["medida_kwh"].sum()
+pct_solar  = solar_kwh / df["medida_kwh"].sum() * 100 if df["medida_kwh"].sum() > 0 else 0
+
+# ── Horas Punta: Abr–Sep, 18–22h ─────────────────────────────────────────────
+punta_mask = df["mes"].between(4,9) & df["hora_dia"].between(18,22)
+punta_kwh  = df[punta_mask]["medida_kwh"].sum()
+punta_pct  = punta_kwh / df["medida_kwh"].sum() * 100 if df["medida_kwh"].sum() > 0 else 0
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 kpi(k1, "Energía Anual",       f"{total_anual:.3f} GWh")
 kpi(k2, "Promedio Mensual",    f"{promedio_mes:,.0f} MWh")
-kpi(k3, "Menor Consumo",       f"{min_mes['total_kwh']/1000:,.0f} MWh", min_mes['label'])
-kpi(k4, "Mayor Consumo",       f"{max_mes['total_kwh']/1000:,.0f} MWh", max_mes['label'])
-kpi(k5, "Bloque Solar 08–17h", f"{pct_solar:.1f}%", f"{solar_kwh/1_000_000:.2f} GWh", acento=True)
+kpi(k3, "Menor Consumo",
+    f"{min_mes['total_kwh']/1000:,.0f} MWh",
+    sub=min_mes['label'],
+    sub2=f"Hora pico: {hora_pico_min:02d}:00 h")
+kpi(k4, "Mayor Consumo",
+    f"{max_mes['total_kwh']/1000:,.0f} MWh",
+    sub=max_mes['label'],
+    sub2=f"Hora pico: {hora_pico_max:02d}:00 h")
+kpi(k5, "Bloque Solar 08–17h",
+    f"{pct_solar:.1f}%",
+    sub=f"{solar_kwh/1_000_000:.2f} GWh")
+kpi(k6, "H. Punta Abr–Sep 18–22h",
+    f"{punta_kwh/1_000_000:.3f} GWh",
+    sub=f"{punta_pct:.1f}% del total",
+    acento=True)
 
-# ─── Consumo Mensual ───
+# ─── Consumo Mensual ─────────────────────────────────────────────────────────
 st.markdown('<div class="section-title">Consumo Mensual</div>', unsafe_allow_html=True)
 
 mensual_sum = df.groupby(["anio_mes","periodo_label","suministrador"])["medida_kwh"].sum().reset_index()
@@ -199,10 +275,6 @@ for i, s in enumerate(sums_list):
         hovertemplate="%{x}<br>" + s + ": %{y:,.0f} MWh<extra></extra>",
     ))
 
-# Línea con total mensual encima
-for _, row in mensual.iterrows():
-    pass  # totales ya calculados arriba
-
 fig_bar.update_layout(
     barmode="stack",
     height=350, margin=dict(t=20,b=10,l=50,r=20),
@@ -212,7 +284,6 @@ fig_bar.update_layout(
     legend=dict(orientation="h", y=-0.25, font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
 )
 
-# Anotaciones con total sobre cada barra
 for _, row in mensual.iterrows():
     fig_bar.add_annotation(
         x=row["label"], y=row["total_mwh"],
@@ -224,54 +295,70 @@ for _, row in mensual.iterrows():
 
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# ─── Curvas por semestre ───
-st.markdown('<div class="section-title">Curvas de Consumo por Hora y Tipo de Día</div>', unsafe_allow_html=True)
+# ─── Curvas por semestre (4 tipos de día) ────────────────────────────────────
+st.markdown('<div class="section-title">Curvas de Consumo por Hora y Tipo de Día</div>',
+            unsafe_allow_html=True)
+
+TIPO_DET_ORDER = ["Lunes a Viernes", "Sábado", "Domingo", "Feriado"]
+
 col_oct, col_abr = st.columns(2)
-for col_ui, sem in [(col_oct,"Oct–Mar"),(col_abr,"Abr–Sep")]:
+for col_ui, sem in [(col_oct, "Oct–Mar"), (col_abr, "Abr–Sep")]:
     df_sem = df[df["semestre"] == sem]
     if df_sem.empty:
         col_ui.info(f"Sin datos para {sem}")
         continue
-    curva = df_sem.groupby(["hora_dia","tipo_label"])["medida_kwh"].mean().reset_index()
+
+    curva = df_sem.groupby(["hora_dia","tipo_detallado"])["medida_kwh"].mean().reset_index()
     top   = curva["medida_kwh"].max() or 1
+
     fig_c = go.Figure()
-    for tipo in curva["tipo_label"].unique():
-        d = curva[curva["tipo_label"]==tipo].sort_values("hora_dia")
-        color = TIPO_COLORS.get(
-            next((k for k,v in TIPO_LABELS.items() if v==tipo), tipo), "#999")
+    for tipo in TIPO_DET_ORDER:
+        d = curva[curva["tipo_detallado"]==tipo].sort_values("hora_dia")
+        if d.empty:
+            continue
         fig_c.add_trace(go.Scatter(
             x=d["hora_dia"], y=d["medida_kwh"]/top*100,
             mode="lines", name=tipo,
-            line=dict(color=color, width=2.5),
+            line=dict(color=TIPO_DET_COLORS[tipo], width=2.5),
             hovertemplate="%{x}h: %{y:.1f}%<extra>" + tipo + "</extra>",
         ))
+
     fig_c.update_layout(
         title=dict(text=sem, font=dict(size=13, color=AZUL_OSCURO, family="DM Sans")),
-        height=300, margin=dict(t=40,b=10,l=45,r=10),
+        height=320, margin=dict(t=40,b=10,l=45,r=10),
         plot_bgcolor=BLANCO, paper_bgcolor=GRIS_FONDO,
         yaxis=dict(title="%", ticksuffix="%", range=[0,110], gridcolor="#e8ecf0"),
         xaxis=dict(title="Hora", dtick=2, range=[-0.5,23.5], gridcolor="#e8ecf0",
                    tickvals=list(range(0,24,2))),
-        legend=dict(font=dict(size=10), orientation="h", y=-0.3, bgcolor="rgba(0,0,0,0)"),
+        legend=dict(font=dict(size=10), orientation="h", y=-0.32, bgcolor="rgba(0,0,0,0)"),
     )
     col_ui.plotly_chart(fig_c, use_container_width=True)
 
-# ─── Consumo Diario Promedio ───
-st.markdown('<div class="section-title">Consumo Promedio por Hora y Tipo de Día [kWh]</div>', unsafe_allow_html=True)
-diario  = df.groupby(["hora_dia","tipo_label"])["medida_kwh"].mean().reset_index()
-palette = [AZUL_CLARO, "#e67e22", ACENTO, "#e74c3c", "#8e44ad", "#2ecc71"]
-fig_d   = go.Figure()
-for i, tipo in enumerate(sorted(diario["tipo_label"].unique())):
-    d = diario[diario["tipo_label"]==tipo].sort_values("hora_dia")
+# ─── Consumo Promedio por Día de Semana ──────────────────────────────────────
+st.markdown('<div class="section-title">Consumo Promedio por Hora y Día de la Semana [kWh]</div>',
+            unsafe_allow_html=True)
+
+DIA_ORDER = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+
+diario = df.groupby(["hora_dia","dia_semana_label"])["medida_kwh"].mean().reset_index()
+
+fig_d = go.Figure()
+for i, dia in enumerate(DIA_ORDER):
+    d = diario[diario["dia_semana_label"]==dia].sort_values("hora_dia")
+    if d.empty:
+        continue
+    # Fines de semana con línea discontinua para distinguirlos visualmente
+    dash = "dot" if dia in ["Sábado","Domingo"] else "solid"
     fig_d.add_trace(go.Scatter(
         x=d["hora_dia"], y=d["medida_kwh"],
-        mode="lines+markers", name=tipo,
-        line=dict(color=palette[i % len(palette)], width=2.5),
-        marker=dict(size=5),
-        hovertemplate="%{x}h: %{y:,.1f} kWh<extra>" + tipo + "</extra>",
+        mode="lines+markers", name=dia,
+        line=dict(color=DIAS_SEMANA_COLORS[i], width=2.2, dash=dash),
+        marker=dict(size=4),
+        hovertemplate="%{x}h: %{y:,.1f} kWh<extra>" + dia + "</extra>",
     ))
+
 fig_d.update_layout(
-    height=360, margin=dict(t=20,b=10,l=65,r=20),
+    height=380, margin=dict(t=20,b=10,l=65,r=20),
     plot_bgcolor=BLANCO, paper_bgcolor=GRIS_FONDO,
     yaxis=dict(title="kWh", gridcolor="#e8ecf0", tickformat=",.0f"),
     xaxis=dict(title="Hora", dtick=1, range=[-0.5,23.5], gridcolor="#e8ecf0",
@@ -280,7 +367,7 @@ fig_d.update_layout(
 )
 st.plotly_chart(fig_d, use_container_width=True)
 
-# ─── Tabla histórico ───
+# ─── Tabla histórico ─────────────────────────────────────────────────────────
 st.markdown('<div class="section-title">Histórico por Período</div>', unsafe_allow_html=True)
 hist = df.groupby(["anio_mes","periodo_label"]).agg(
     energia_kwh    =("medida_kwh","sum"),
