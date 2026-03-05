@@ -108,8 +108,10 @@ def load_filtered(path, retiro, clave):
     df["fecha"] = pd.to_datetime(
         df[["anio","mes","dia_del_mes"]].rename(
             columns={"anio":"year","mes":"month","dia_del_mes":"day"}
-        )
+        ),
+        errors="coerce"
     )
+    df = df[df["fecha"].notna()].copy()  # descartar filas con fecha inválida
     df["dia_semana"]       = df["fecha"].dt.dayofweek          # 0=Lun … 6=Dom
     df["dia_semana_label"] = df["dia_semana"].map(DIAS_SEMANA_LABEL)
     df["es_feriado"]       = df["fecha"].dt.date.apply(lambda d: d in CL_HOLIDAYS)
